@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Describing Data Distributions Card Sort</title>
+<style>
+:root{--bg:#f5f6fa;--ink:#1d2433;--mut:#667085;--line:#d5d9e3;--g:#dbeafe;--gb:#2563eb;--s:#fef3c7;--sb:#d97706;--ok:#16a34a;--bad:#dc2626}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:12px 16px;background:#fff;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px;align-items:center;position:sticky;top:0;z-index:5}
+h1{font-size:1.1rem;margin:0;flex:1 1 220px}
+button{font:inherit;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+button.primary{background:#2563eb;color:#fff;border-color:#2563eb}
+#score{font-weight:600;font-size:.9rem}
+.intro{margin:12px 16px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:.92rem;line-height:1.45}
+main{display:grid;grid-template-columns:minmax(300px,1fr) 2fr;gap:16px;padding:0 16px 90px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+h2{font-size:1rem;margin:10px 0 6px}
+h2 small{font-weight:400;color:var(--mut)}
+.pool{display:flex;flex-direction:column;gap:6px}
+.lab{font-size:.75rem;font-weight:700;color:var(--mut);margin-top:8px}
+.card{border:2px solid;border-radius:8px;padding:6px 8px;font-size:.9rem;cursor:pointer;user-select:none;position:relative;background:#fff}
+.card.g{border-color:var(--gb);background:#f4f8ff}
+.card.s{border-color:var(--sb);background:#fffaf0}
+.card.sel{outline:4px solid #111;outline-offset:1px}
+.card b.ltr{position:absolute;top:3px;left:6px;font-size:.75rem;color:var(--mut)}
+.card ul{margin:4px 0 0;padding-left:22px}
+.card svg{width:100%;height:auto;display:block;margin-top:4px}
+.groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;align-content:start}
+.group{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px}
+.group h3{margin:0 0 6px;font-size:.8rem;color:var(--mut)}
+.slot{min-height:46px;border:2px dashed;border-radius:8px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--mut);cursor:pointer}
+.slot.g{border-color:var(--gb)}.slot.s{border-color:var(--sb)}
+.slot.over{background:#eef}
+.slot.full{border-style:solid;border-color:transparent;padding:0}
+.slot .card{width:100%}
+.slot.ok .card{box-shadow:0 0 0 3px var(--ok)}
+.slot.bad .card{box-shadow:0 0 0 3px var(--bad)}
+.measure{font-size:.88rem;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.measure label{cursor:pointer}
+.mk{font-weight:700}.mk.ok{color:var(--ok)}.mk.bad{color:var(--bad)}
+textarea{width:100%;margin-top:6px;font:inherit;font-size:.82rem;border:1px solid var(--line);border-radius:6px;padding:5px;resize:vertical;min-height:44px}
+#bar{position:fixed;bottom:0;left:0;right:0;background:#111;color:#fff;padding:10px 16px;font-size:.9rem;display:none;gap:10px;align-items:center;z-index:9}
+#bar span{flex:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>Describing Data Distributions Card Sort</h1>
+  <span id="score"></span>
+  <button class="primary" id="check">Check my work</button>
+  <button id="reset">Start over</button>
+</header>
+<div class="intro"><b>Directions:</b> Make 7 groups of 2 cards: one graph and the description that matches it. Then, for each group, decide whether the <b>mean</b> or the <b>median</b> is the better measure of center, and explain why using the shape of the graph.</div>
+
+<main>
+  <section>
+    <h2>Cards <small>— tap a card, then tap a matching empty slot (or drag it)</small></h2>
+    <div class="pool" id="pool"></div>
+  </section>
+  <section>
+    <h2>Your groups <small>— tap a placed card to remove it</small></h2>
+    <div class="groups" id="groups"></div>
+  </section>
+</main>
+<div id="bar"><span id="barText"></span><button id="cancel">Cancel</button></div>
+
+<script>
+/* ---------- graph drawing ---------- */
+function hist(bars,xmin,xmax,ymax){
+  const L=30,R=290,B=140,Tp=8;
+  const sx=v=>L+(v-xmin)/(xmax-xmin)*(R-L), sy=h=>B-h/ymax*(B-Tp);
+  let s='<svg viewBox="0 0 300 160" role="img" aria-label="histogram">';
+  bars.forEach(([a,b,h])=>{s+=`<rect x="${sx(a)}" y="${sy(h)}" width="${sx(b)-sx(a)}" height="${B-sy(h)}" fill="#999" stroke="#000" stroke-width="1.2"/>`});
+  s+=`<line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#000"/><line x1="${L}" y1="${Tp}" x2="${L}" y2="${B}" stroke="#000"/>`;
+  for(let v=Math.ceil(xmin);v<=xmax;v++) s+=`<text x="${sx(v)}" y="${B+12}" font-size="8" text-anchor="middle">${v}</text>`;
+  for(let h=1;h<=ymax;h++) s+=`<text x="${L-4}" y="${sy(h)+3}" font-size="7" text-anchor="end">${h}</text>`;
+  return s+'</svg>';
+}
+function box(mn,q1,md,q3,mx,a,b,step){
+  const L=20,R=280,sx=v=>L+(v-a)/(b-a)*(R-L);
+  let s='<svg viewBox="0 0 300 110" role="img" aria-label="box plot">';
+  s+=`<line x1="${sx(mn)}" y1="40" x2="${sx(q1)}" y2="40" stroke="#000" stroke-width="1.5"/><line x1="${sx(q3)}" y1="40" x2="${sx(mx)}" y2="40" stroke="#000" stroke-width="1.5"/>`;
+  s+=`<line x1="${sx(mn)}" y1="30" x2="${sx(mn)}" y2="50" stroke="#000" stroke-width="1.5"/><line x1="${sx(mx)}" y1="30" x2="${sx(mx)}" y2="50" stroke="#000" stroke-width="1.5"/>`;
+  s+=`<rect x="${sx(q1)}" y="22" width="${sx(q3)-sx(q1)}" height="36" fill="#fff" stroke="#000" stroke-width="1.5"/><line x1="${sx(md)}" y1="22" x2="${sx(md)}" y2="58" stroke="#000" stroke-width="1.5"/>`;
+  s+=`<line x1="${L}" y1="80" x2="${R}" y2="80" stroke="#000"/>`;
+  for(let v=a;v<=b;v+=step) s+=`<line x1="${sx(v)}" y1="76" x2="${sx(v)}" y2="84" stroke="#000"/><text x="${sx(v)}" y="97" font-size="8" text-anchor="middle">${v}</text>`;
+  return s+'</svg>';
+}
+const h11=[1,1,2,2,3,4,3,2,2,1,1];
+const GRAPHS={
+ A:hist(h11.map((h,i)=>[i+1,i+2,h]),0,12.5,5),
+ B:hist(h11.map((h,i)=>[i-19,i-18,h]),-20,-7.5,5),
+ C:hist([[-21,-20,5],[-19,-18,3],[-17,-16,2],[-15,-14,1],[-13,-12,2],[-9,-8,3],[-7,-6,5]],-22,-5,5),
+ D:hist([[10,11,10],[11,12,5],[12,13,1],[13,14,1],[14,15,2],[16,17,2],[18,19,1]],9,19.5,10),
+ E:hist([[10,11,5],[11,12,2],[12,13,1],[13,14,1],[14,15,13]],10,15.3,13),
+ F:box(-19,-17,-14,-11,-9,-20,-8,2),
+ G:box(10,14,20,25,40,8,44,4)
+};
+const DESC={
+ H:["skewed right","IQR: 11"], I:["symmetric","mean: 6"], J:["skewed left","median: 14.5"],
+ K:["uniform","median: -14"], L:["symmetric","mean: -14"],
+ M:["skewed right","median: 11"], N:["bimodal","mean: -14"]
+};
+/* answer key */
+const PAIR={A:"I",B:"L",C:"N",D:"M",E:"J",F:"K",G:"H"};
+const BEST={A:"mean",B:"mean",C:"mean",D:"median",E:"median",F:"mean",G:"median"};
+
+/* ---------- app ---------- */
+const GL=Object.keys(GRAPHS), DL=Object.keys(DESC), N=7;
+const LABEL={g:"Graph",s:"Description"};
+let placed,choice,why,sel,order,checked;
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function init(){
+  placed=Array.from({length:N},()=>({g:null,s:null}));
+  choice=Array(N).fill(null);why=Array(N).fill("");
+  sel=null;checked=false;
+  order={g:shuffle(GL),s:shuffle(DL)};
+  render();
+}
+const isPlaced=(t,id)=>placed.some(p=>p[t]===id);
+function cardEl(t,id){
+  const c=document.createElement("div");
+  c.className="card "+t+((sel&&sel.t===t&&sel.id===id)?" sel":"");
+  c.innerHTML=`<b class="ltr">${id}</b>`+(t==="g"?GRAPHS[id]:`<ul style="margin-top:14px">${DESC[id].map(x=>`<li>${x}</li>`).join("")}</ul>`);
+  if(t==="g")c.querySelector("svg").style.marginTop="14px";
+  c.draggable=true;
+  c.addEventListener("dragstart",ev=>ev.dataTransfer.setData("text/plain",t+":"+id));
+  return c;
+}
+function place(gi,t,id){
+  if(placed[gi][t]!==null)return;
+  placed.forEach(p=>{if(p[t]===id)p[t]=null});
+  placed[gi][t]=id;sel=null;checked=false;render();
+}
+function render(){
+  const pool=document.getElementById("pool");pool.innerHTML="";
+  [["g","GRAPHS"],["s","DESCRIPTIONS"]].forEach(([t,name])=>{
+    const h=document.createElement("div");h.className="lab";h.textContent=name;pool.appendChild(h);
+    order[t].filter(id=>!isPlaced(t,id)).forEach(id=>{
+      const c=cardEl(t,id);
+      c.onclick=()=>{sel=(sel&&sel.t===t&&sel.id===id)?null:{t,id};render()};
+      pool.appendChild(c);
+    });
+  });
+  const gr=document.getElementById("groups");gr.innerHTML="";
+  placed.forEach((p,gi)=>{
+    const box=document.createElement("div");box.className="group";
+    box.innerHTML=`<h3>Group ${gi+1}</h3>`;
+    const both=p.g!==null&&p.s!==null;
+    ["g","s"].forEach(t=>{
+      const s=document.createElement("div");s.className="slot "+t;
+      const v=p[t];
+      if(v===null){
+        s.textContent=LABEL[t];
+        s.onclick=()=>{if(sel&&sel.t===t)place(gi,t,sel.id)};
+        s.ondragover=ev=>{ev.preventDefault();s.classList.add("over")};
+        s.ondragleave=()=>s.classList.remove("over");
+        s.ondrop=ev=>{ev.preventDefault();const [ty,id]=ev.dataTransfer.getData("text/plain").split(":");if(ty===t)place(gi,t,id)};
+      }else{
+        s.classList.add("full");
+        const c=cardEl(t,v);c.draggable=false;
+        c.onclick=()=>{p[t]=null;checked=false;render()};
+        s.appendChild(c);
+        if(checked&&both) s.classList.add(PAIR[p.g]===p.s?"ok":"bad");
+      }
+      box.appendChild(s);
+    });
+    const m=document.createElement("div");m.className="measure";
+    m.innerHTML=`<span>Better center:</span>
+      <label><input type="radio" name="m${gi}" value="mean" ${choice[gi]==="mean"?"checked":""}> Mean</label>
+      <label><input type="radio" name="m${gi}" value="median" ${choice[gi]==="median"?"checked":""}> Median</label>`;
+    m.querySelectorAll("input").forEach(r=>r.onchange=()=>{choice[gi]=r.value;checked=false;render()});
+    if(checked&&p.g!==null&&choice[gi]!==null){
+      const ok=choice[gi]===BEST[p.g];
+      m.insertAdjacentHTML("beforeend",`<span class="mk ${ok?"ok":"bad"}">${ok?"✓":"✗"}</span>`);
+    }
+    box.appendChild(m);
+    const ta=document.createElement("textarea");
+    ta.placeholder="Why? Use the shape of the graph…";ta.value=why[gi];
+    ta.oninput=()=>{why[gi]=ta.value};
+    box.appendChild(ta);
+    gr.appendChild(box);
+  });
+  const bar=document.getElementById("bar");
+  if(sel){
+    bar.style.display="flex";
+    document.getElementById("barText").textContent="Selected card "+sel.id+" — tap an empty "+LABEL[sel.t].toLowerCase()+" slot";
+  }else bar.style.display="none";
+  const sc=document.getElementById("score");
+  if(checked){
+    const pr=placed.filter(p=>p.g!==null&&PAIR[p.g]===p.s).length;
+    const mr=placed.filter((p,i)=>p.g!==null&&choice[i]===BEST[p.g]).length;
+    sc.textContent=`${pr} of ${N} pairs matched · ${mr} of ${N} centers correct`;
+  }else{
+    sc.textContent=`${placed.filter(p=>p.g!==null&&p.s!==null).length} of ${N} groups built`;
+  }
+}
+document.getElementById("check").onclick=()=>{checked=true;render()};
+document.getElementById("reset").onclick=()=>{if(confirm("Clear everything and reshuffle?"))init()};
+document.getElementById("cancel").onclick=()=>{sel=null;render()};
+init();
+</script>
+</body>
+</html>
